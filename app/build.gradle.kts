@@ -23,8 +23,8 @@ android {
         applicationId = "com.example.wakealarm"
         minSdk = 30
         targetSdk = 35
-        versionCode = 3
-        versionName = "2.1"
+        versionCode = 4
+        versionName = "2.2"
 
         // Backend settings baked into the APK (set WAKE_BACKEND_URL / WAKE_KEY as CI secrets).
         buildConfigField("String", "BACKEND_URL", "\"${env("WAKE_BACKEND_URL", "https://notificationviaapi.netlify.app")}\"")
@@ -50,6 +50,16 @@ dependencies {
     implementation("androidx.compose.material:material-icons-core:1.7.5")
     implementation("androidx.wear.compose:compose-material:1.4.0")
     implementation("androidx.wear.compose:compose-foundation:1.4.0")
+
+    // Tile ("widget") on the watch face carousel
+    implementation("androidx.wear.tiles:tiles:1.4.1")
+    implementation("androidx.wear.protolayout:protolayout:1.2.1")
+    implementation("androidx.wear.protolayout:protolayout-material:1.2.1")
+    implementation("androidx.wear.protolayout:protolayout-expression:1.2.1")
+    implementation("com.google.guava:guava:33.3.1-android")
+
+    // QR code
+    implementation("com.google.zxing:core:3.5.3")
 
     implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
     implementation("com.google.firebase:firebase-messaging")

@@ -11,7 +11,7 @@
 
     <application
         android:label="WakeAlarm"
-        android:icon="@drawable/ic_bell"
+        android:icon="@mipmap/ic_launcher"
         android:theme="@android:style/Theme.DeviceDefault">
         <meta-data android:name="com.google.android.wearable.standalone" android:value="true" />
 
@@ -25,6 +25,18 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Tile ("widget") on the watch-face carousel -->
+        <service android:name=".WakeTile"
+            android:exported="true"
+            android:label="WakeAlarm"
+            android:icon="@drawable/ic_bell"
+            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
+            <intent-filter>
+                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
+            </intent-filter>
+            <meta-data android:name="androidx.wear.tiles.PREVIEW" android:resource="@drawable/tile_preview" />
+        </service>
 
         <!-- Always-on: publishes the Ongoing Activity shown on the watch face / Now Bar -->
         <service android:name=".ListenerService"

@@ -17,7 +17,25 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import android.graphics.Bitmap
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.QrCode
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
+import androidx.wear.compose.material.ChipDefaults.chipColors
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.EncodeHintType
+import com.google.zxing.qrcode.QRCodeWriter
+import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -65,11 +83,14 @@ private val Teal = Color(0xFF26A69A)
 private val Amber = Color(0xFFFFB300)
 private val Ink = Color(0xFF0B0F14)
 private val Muted = Color(0xFF9AA4AE)
+private val Yellow = Color(0xFFFFD600)
 
 class MainActivity : ComponentActivity() {
 
     private val askNotifications =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { ListenerService.start(this) }
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+            if (Listening.load(this)) ListenerService.start(this)
+        }
 
     fun askNotificationsPublic() = askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
 
@@ -95,7 +116,7 @@ class MainActivity : ComponentActivity() {
 private fun MainActivity.ensureNotificationsThenListen() {
     val needsAsk = Build.VERSION.SDK_INT >= 33 &&
         checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-    if (needsAsk) askNotificationsPublic() else ListenerService.start(this)
+    if (needsAsk) askNotificationsPublic() else if (Listening.load(this)) ListenerService.start(this)
 }
 
 @Composable
@@ -107,7 +128,7 @@ private fun WakeApp(onStop: () -> Unit) {
         label = "screen"
     ) { isRinging ->
         if (isRinging) RingingScreen(message = AlarmService.message, onStop = onStop)
-        else IdleScreen()
+        else HomeScreen()
     }
 }
 
@@ -170,20 +191,31 @@ private fun RingingScreen(message: String, onStop: () -> Unit) {
     }
 }
 
-/* ───────────────────────── Idle ───────────────────────── */
+/* ───────────────────────── Home ───────────────────────── */
 
 @Composable
-private fun IdleScreen() {
+private fun HomeScreen() {
+    var showQr by remember { mutableStateOf(false) }
+    if (showQr) QrScreen(onBack = { showQr = false }) else IdleScreen(onShowQr = { showQr = true })
+}
+
+@Composable
+private fun IdleScreen(onShowQr: () -> Unit) {
+    val ctx = LocalContext.current
+    val on = Listening.enabled
+    LaunchedEffect(Unit) { Listening.load(ctx) }
+
     Scaffold(
         timeText = { TimeText() },
         vignette = { Vignette(vignettePosition = VignettePosition.TopAndBottom) }
     ) {
-        val (dotColor, title, hint) = when (Backend.status) {
-            Backend.Status.READY -> Triple(Teal, "جاهز للاستقبال", "يعمل في الخلفية — يظهر في Now Bar")
-            Backend.Status.REGISTERING -> Triple(Amber, "جارٍ التسجيل…", "ربط الساعة بالباك إند")
-            Backend.Status.NO_FIREBASE -> Triple(Red, "Firebase غير مضبوط", Backend.detail)
-            Backend.Status.NOT_CONFIGURED -> Triple(Red, "الباك إند غير مضبوط", Backend.detail)
-            Backend.Status.ERROR -> Triple(Red, "تعذر التسجيل", Backend.detail)
+        val (dotColor, title, hint) = when {
+            !on -> Triple(Muted, "الاستماع متوقف", "لن تصل التنبيهات حتى تشغّله")
+            Backend.status == Backend.Status.READY -> Triple(Teal, "جاهز للاستقبال", "يعمل في الخلفية — يظهر في Now Bar")
+            Backend.status == Backend.Status.REGISTERING -> Triple(Amber, "جارٍ التسجيل…", "ربط الساعة بالباك إند")
+            Backend.status == Backend.Status.NO_FIREBASE -> Triple(Red, "Firebase غير مضبوط", Backend.detail)
+            Backend.status == Backend.Status.NOT_CONFIGURED -> Triple(Red, "الباك إند غير مضبوط", Backend.detail)
+            else -> Triple(Red, "تعذر التسجيل", Backend.detail)
         }
         val blink = rememberInfiniteTransition(label = "blink")
         val a by blink.animateFloat(
@@ -191,28 +223,81 @@ private fun IdleScreen() {
         )
 
         Column(
-            Modifier.fillMaxSize().background(Ink).padding(horizontal = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            Modifier.fillMaxSize().background(Ink).verticalScroll(rememberScrollState())
+                .padding(horizontal = 22.dp, vertical = 30.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Box(
-                Modifier.size(54.dp).background(Color(0xFF161B22), CircleShape),
+                Modifier.size(50.dp).background(Color(0xFF161B22), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Rounded.Notifications, contentDescription = null, tint = Color.White, modifier = Modifier.size(28.dp))
+                Icon(Icons.Rounded.Notifications, contentDescription = null,
+                    tint = if (on) Color.White else Muted, modifier = Modifier.size(26.dp))
                 Box(
-                    Modifier.align(Alignment.BottomEnd).padding(2.dp).size(13.dp)
-                        .alpha(if (Backend.status == Backend.Status.REGISTERING) a else 1f)
+                    Modifier.align(Alignment.BottomEnd).padding(2.dp).size(12.dp)
+                        .alpha(if (on && Backend.status == Backend.Status.REGISTERING) a else 1f)
                         .background(dotColor, CircleShape)
                 )
             }
-            Spacer(Modifier.height(10.dp))
-            Text("WakeAlarm", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
-            Spacer(Modifier.height(4.dp))
-            Text(title, fontSize = 14.sp, color = dotColor, textAlign = TextAlign.Center)
-            Spacer(Modifier.height(2.dp))
-            Text(hint, fontSize = 11.sp, color = Muted, textAlign = TextAlign.Center,
+            Spacer(Modifier.height(6.dp))
+            Text("WakeAlarm", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            Text(title, fontSize = 13.sp, color = dotColor, textAlign = TextAlign.Center)
+            Text(hint, fontSize = 10.sp, color = Muted, textAlign = TextAlign.Center,
                 maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(10.dp))
+
+            Chip(
+                onClick = { Listening.set(ctx, !on) },
+                modifier = Modifier.fillMaxWidth().height(46.dp),
+                colors = if (on) chipColors(backgroundColor = Color(0xFF2A1215), contentColor = Red)
+                         else chipColors(backgroundColor = Yellow, contentColor = Ink),
+                icon = {
+                    Icon(if (on) Icons.Rounded.Close else Icons.Rounded.PlayArrow,
+                        contentDescription = null, modifier = Modifier.size(22.dp))
+                },
+                label = {
+                    Text(if (on) "إيقاف الاستماع" else "تشغيل الاستماع",
+                        fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                }
+            )
+            Spacer(Modifier.height(8.dp))
+            Chip(
+                onClick = onShowQr,
+                modifier = Modifier.fillMaxWidth().height(46.dp),
+                colors = chipColors(backgroundColor = Color(0xFF161B22), contentColor = Color.White),
+                icon = { Icon(Icons.Rounded.QrCode, contentDescription = null, modifier = Modifier.size(22.dp)) },
+                label = { Text("رابط الطلب (QR)", fontSize = 14.sp, maxLines = 1) }
+            )
+            Spacer(Modifier.height(24.dp))
         }
     }
+}
+
+/* ───────────────────────── QR ───────────────────────── */
+
+@Composable
+private fun QrScreen(onBack: () -> Unit) {
+    val url = remember { Listening.alertUrl() }
+    val bitmap = remember(url) { qrBitmap(url, 360) }
+    Column(
+        Modifier.fillMaxSize().background(Color.White).clickable(onClick = onBack)
+            .padding(horizontal = 26.dp, vertical = 22.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Image(bitmap.asImageBitmap(), contentDescription = "QR", modifier = Modifier.fillMaxWidth().wrapContentHeight())
+        Spacer(Modifier.height(4.dp))
+        Text("امسحه بالجوال — أضف الرسالة بعد msg=", fontSize = 9.sp, color = Color(0xFF444444),
+            textAlign = TextAlign.Center, maxLines = 2)
+        Text("اضغط للرجوع", fontSize = 9.sp, color = Color(0xFF888888))
+    }
+}
+
+private fun qrBitmap(text: String, size: Int): Bitmap {
+    val hints = mapOf(EncodeHintType.ERROR_CORRECTION to ErrorCorrectionLevel.M, EncodeHintType.MARGIN to 0)
+    val m = QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, size, size, hints)
+    val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.RGB_565)
+    for (x in 0 until size) for (y in 0 until size)
+        bmp.setPixel(x, y, if (m[x, y]) 0xFF000000.toInt() else 0xFFFFFFFF.toInt())
+    return bmp
 }
