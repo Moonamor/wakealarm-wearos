@@ -25,12 +25,12 @@ import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.QrCode
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.wear.compose.material.ChipDefaults.chipColors
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
@@ -265,7 +265,7 @@ private fun IdleScreen(onShowQr: () -> Unit) {
                 onClick = onShowQr,
                 modifier = Modifier.fillMaxWidth().height(46.dp),
                 colors = chipColors(backgroundColor = Color(0xFF161B22), contentColor = Color.White),
-                icon = { Icon(Icons.Rounded.QrCode, contentDescription = null, modifier = Modifier.size(22.dp)) },
+                icon = { Icon(painterResource(R.drawable.ic_qr), contentDescription = null, modifier = Modifier.size(22.dp)) },
                 label = { Text("رابط الطلب (QR)", fontSize = 14.sp, maxLines = 1) }
             )
             Spacer(Modifier.height(24.dp))
