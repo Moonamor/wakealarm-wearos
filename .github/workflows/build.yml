@@ -3,6 +3,9 @@ on: [push, workflow_dispatch]
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
     env:
       WAKE_BACKEND_URL: ${{ vars.WAKE_BACKEND_URL }}
       WAKE_KEY: ${{ secrets.WAKE_KEY }}
@@ -25,6 +28,19 @@ jobs:
           [ -n "$WAKE_BACKEND_URL" ] && echo "✅ WAKE_BACKEND_URL=$WAKE_BACKEND_URL" || echo "⚠️  WAKE_BACKEND_URL not set (repo Variable)"
           [ -n "$WAKE_KEY" ] && echo "✅ WAKE_KEY set" || echo "⚠️  WAKE_KEY not set (repo Secret)"
 
-      - run: gradle assembleDebug
+      - name: Build
+        id: build
+        continue-on-error: true
+        run: gradle assembleDebug --console=plain 2>&1 | tee build.log; exit ${PIPESTATUS[0]}
+
+      - name: Report errors as issue
+        if: steps.build.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          { echo '```'; grep -aE "^e: |error:|What went wrong|Unresolved|Could not|AAPT|ERROR|FAILURE|> Task .* FAILED" build.log | head -80; echo; echo "--- tail ---"; tail -40 build.log; echo '```'; } > body.md
+          gh issue create --title "Build failed: ${GITHUB_SHA::7}" --body-file body.md --label ci-failure 2>/dev/null || gh issue create --title "Build failed: ${GITHUB_SHA::7}" --body-file body.md
+          exit 1
+
       - uses: actions/upload-artifact@v4
         with: { name: WakeAlarm-apk, path: app/build/outputs/apk/debug/app-debug.apk }
