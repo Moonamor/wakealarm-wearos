@@ -1,4 +1,3 @@
-app/google-services.json
 node_modules/
 .netlify/
 build/

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "927264620747",
+    "project_id": "notificationviaapi",
+    "storage_bucket": "notificationviaapi.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:927264620747:android:4a42941b4b5c5b985f9b4e",
+        "android_client_info": {
+          "package_name": "com.example.wakealarm"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCNFFgesmmazl7Z7Qig7yBCHqXuD8Q_09Q"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

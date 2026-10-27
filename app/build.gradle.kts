@@ -27,7 +27,7 @@ android {
         versionName = "2.0"
 
         // Backend settings baked into the APK (set WAKE_BACKEND_URL / WAKE_KEY as CI secrets).
-        buildConfigField("String", "BACKEND_URL", "\"${env("WAKE_BACKEND_URL", "")}\"")
+        buildConfigField("String", "BACKEND_URL", "\"${env("WAKE_BACKEND_URL", "https://notificationviaapi.netlify.app")}\"")
         buildConfigField("String", "WAKE_KEY", "\"${env("WAKE_KEY", "")}\"")
     }
     buildFeatures {
