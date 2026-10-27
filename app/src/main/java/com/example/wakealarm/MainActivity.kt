@@ -1,7 +1,11 @@
 package com.example.wakealarm
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.LinearEasing
@@ -63,8 +67,17 @@ private val Ink = Color(0xFF0B0F14)
 private val Muted = Color(0xFF9AA4AE)
 
 class MainActivity : ComponentActivity() {
+
+    private val askNotifications =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { ListenerService.start(this) }
+
+    fun askNotificationsPublic() = askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        setShowWhenLocked(true)
+        setTurnScreenOn(true)
+        ensureNotificationsThenListen()
         setContent {
             LaunchedEffect(Unit) { Backend.refresh(this@MainActivity) }
             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
@@ -77,6 +90,12 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+}
+
+private fun MainActivity.ensureNotificationsThenListen() {
+    val needsAsk = Build.VERSION.SDK_INT >= 33 &&
+        checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+    if (needsAsk) askNotificationsPublic() else ListenerService.start(this)
 }
 
 @Composable
@@ -160,7 +179,7 @@ private fun IdleScreen() {
         vignette = { Vignette(vignettePosition = VignettePosition.TopAndBottom) }
     ) {
         val (dotColor, title, hint) = when (Backend.status) {
-            Backend.Status.READY -> Triple(Teal, "جاهز للاستقبال", "الساعة مسجّلة في الباك إند")
+            Backend.Status.READY -> Triple(Teal, "جاهز للاستقبال", "يعمل في الخلفية — يظهر في Now Bar")
             Backend.Status.REGISTERING -> Triple(Amber, "جارٍ التسجيل…", "ربط الساعة بالباك إند")
             Backend.Status.NO_FIREBASE -> Triple(Red, "Firebase غير مضبوط", Backend.detail)
             Backend.Status.NOT_CONFIGURED -> Triple(Red, "الباك إند غير مضبوط", Backend.detail)
