@@ -1,0 +1,17 @@
+<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>WakeAlarm</title>
+<style>:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0b0f14;color:#e6edf3;font-family:-apple-system,"Segoe UI",Tahoma,sans-serif;padding:16px}.card{width:100%;max-width:420px;background:#161b22;border:1px solid #30363d;border-radius:16px;padding:24px}h1{margin:0 0 20px;font-size:22px;text-align:center}label{display:block;font-size:14px;color:#8b949e;margin:14px 0 6px}input{width:100%;padding:14px;font-size:18px;border-radius:10px;border:1px solid #30363d;background:#0d1117;color:#e6edf3}#key{direction:ltr;text-align:left}input:focus{outline:none;border-color:#58a6ff}button{width:100%;margin-top:22px;padding:20px;font-size:22px;font-weight:700;border:0;border-radius:12px;background:#da3633;color:#fff;cursor:pointer}button:disabled{opacity:.6}#status{margin-top:16px;min-height:24px;text-align:center;font-size:15px}.ok{color:#3fb950}.err{color:#f85149}</style></head>
+<body><div class="card"><h1>⌚ WakeAlarm</h1>
+<label>المفتاح السري (WAKE_KEY)</label><input id="key" placeholder="••••••" autocomplete="off">
+<label>الرسالة التي تظهر على الساعة</label><input id="msg" value="استيقظ!">
+<button id="send">🔔 أرسل للساعة</button><div id="status"></div></div>
+<script>
+const $=i=>document.getElementById(i);
+try{$('key').value=localStorage.getItem('wake_key')||'';$('msg').value=localStorage.getItem('wake_msg')||'استيقظ!'}catch(e){}
+$('send').onclick=async()=>{const key=$('key').value.trim(),msg=$('msg').value.trim();
+if(!key){$('status').className='err';$('status').textContent='أدخل المفتاح السري';return}
+try{localStorage.setItem('wake_key',key);localStorage.setItem('wake_msg',msg)}catch(e){}
+$('send').disabled=true;$('status').className='';$('status').textContent='جارٍ الإرسال…';
+try{const r=await fetch('/alert',{method:'POST',headers:{'content-type':'application/json','x-key':key},body:JSON.stringify({msg})});const j=await r.json();
+if(r.ok){$('status').className='ok';$('status').textContent='✅ أُرسلت: '+j.sent}else{$('status').className='err';$('status').textContent='❌ '+(j.error||r.status)}}
+catch(e){$('status').className='err';$('status').textContent='❌ فشل الاتصال'}finally{$('send').disabled=false}};
+</script></body></html>

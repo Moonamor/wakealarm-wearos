@@ -1,0 +1,8 @@
+app/google-services.json
+node_modules/
+.netlify/
+build/
+.gradle/
+*.iml
+.idea/
+local.properties

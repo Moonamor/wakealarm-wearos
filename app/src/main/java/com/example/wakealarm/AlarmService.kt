@@ -1,65 +1,99 @@
 package com.example.wakealarm
 
-import android.app.*
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
+import android.content.Context
 import android.content.Intent
-import android.net.wifi.WifiManager
-import android.os.*
-import fi.iki.elonen.NanoHTTPD
+import android.os.IBinder
+import android.os.PowerManager
+import android.os.VibrationEffect
+import android.os.VibratorManager
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 
+/**
+ * Foreground service that runs only while the alarm is ringing.
+ * Started by [WakeMessagingService] when a push arrives, stopped by the on-screen button.
+ */
 class AlarmService : Service() {
+
     companion object {
-        const val PORT = 8080
-        const val SECRET = "WAKE"
+        const val ACTION_RING = "com.example.wakealarm.RING"
         const val ACTION_STOP = "com.example.wakealarm.STOP"
-        @Volatile var ringing = false
-        var onStateChange: ((Boolean) -> Unit)? = null
+        const val EXTRA_MESSAGE = "msg"
+        const val DEFAULT_MESSAGE = "استيقظ!"
+
+        private const val CHANNEL_RING = "ring"
+        private const val NOTIF_ID = 2
+
+        /** Observable state for the Compose UI. */
+        var ringing by mutableStateOf(false)
+            private set
+        var message by mutableStateOf(DEFAULT_MESSAGE)
+            private set
+
+        fun ring(context: Context, msg: String?) {
+            val i = Intent(context, AlarmService::class.java)
+                .setAction(ACTION_RING)
+                .putExtra(EXTRA_MESSAGE, msg?.takeIf { it.isNotBlank() } ?: DEFAULT_MESSAGE)
+            context.startForegroundService(i)
+        }
+
+        fun stop(context: Context) {
+            context.startService(Intent(context, AlarmService::class.java).setAction(ACTION_STOP))
+        }
     }
 
-    private var server: NanoHTTPD? = null
     private var wakeLock: PowerManager.WakeLock? = null
-    private var wifiLock: WifiManager.WifiLock? = null
     private val vibrator by lazy {
         (getSystemService(VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
     }
 
     override fun onCreate() {
         super.onCreate()
-        val nm = getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(
-            NotificationChannel("listen", "Listening", NotificationManager.IMPORTANCE_LOW))
-        nm.createNotificationChannel(
-            NotificationChannel("ring", "Alarm", NotificationManager.IMPORTANCE_HIGH))
-
-        startForeground(1, Notification.Builder(this, "listen")
-            .setContentTitle("WakeAlarm يستمع على المنفذ $PORT")
-            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-            .setOngoing(true).build())
-
-        wifiLock = (applicationContext.getSystemService(WIFI_SERVICE) as WifiManager)
-            .createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "wakealarm:wifi")
-            .apply { acquire() }
-
-        server = object : NanoHTTPD(PORT) {
-            override fun serve(session: IHTTPSession): Response {
-                if (session.method == Method.POST) session.parseBody(HashMap())
-                val value = session.parameters["value"]?.firstOrNull()
-                return if (session.uri == "/alert" && value == SECRET) {
-                    startRinging()
-                    newFixedLengthResponse("RINGING")
-                } else newFixedLengthResponse(Response.Status.FORBIDDEN, MIME_PLAINTEXT, "NO")
+        getSystemService(NotificationManager::class.java).createNotificationChannel(
+            NotificationChannel(CHANNEL_RING, "Alarm", NotificationManager.IMPORTANCE_HIGH).apply {
+                setBypassDnd(true)
             }
-        }
-        server?.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false)
+        )
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) stopRinging()
-        return START_STICKY
+        when (intent?.action) {
+            ACTION_RING -> startRinging(intent.getStringExtra(EXTRA_MESSAGE) ?: DEFAULT_MESSAGE)
+            ACTION_STOP -> { stopRinging(); stopSelf() }
+            else -> stopSelf()
+        }
+        return START_NOT_STICKY
     }
 
-    private fun startRinging() {
+    private fun startRinging(msg: String) {
+        message = msg
+
+        val fullScreen = PendingIntent.getActivity(
+            this, 0,
+            Intent(this, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val notification = Notification.Builder(this, CHANNEL_RING)
+            .setContentTitle(msg)
+            .setContentText("اضغط لإيقاف التنبيه")
+            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+            .setCategory(Notification.CATEGORY_ALARM)
+            .setFullScreenIntent(fullScreen, true)
+            .setContentIntent(fullScreen)
+            .setOngoing(true)
+            .build()
+        startForeground(NOTIF_ID, notification)
+
         if (ringing) return
         ringing = true
+
         wakeLock = (getSystemService(POWER_SERVICE) as PowerManager)
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "wakealarm:ring")
             .apply { acquire(30 * 60 * 1000L) }
@@ -68,17 +102,11 @@ class AlarmService : Service() {
         val amps = intArrayOf(0, 255, 0, 255, 0, 255, 0)
         vibrator.vibrate(VibrationEffect.createWaveform(timings, amps, 0))
 
-        val pi = PendingIntent.getActivity(this, 0,
-            Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            PendingIntent.FLAG_IMMUTABLE)
-        getSystemService(NotificationManager::class.java).notify(2,
-            Notification.Builder(this, "ring")
-                .setContentTitle("استيقظ!")
-                .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-                .setCategory(Notification.CATEGORY_ALARM)
-                .setFullScreenIntent(pi, true)
-                .setOngoing(true).build())
-        onStateChange?.invoke(true)
+        // Bring the alarm screen up immediately as well (full-screen intent handles the locked case).
+        startActivity(
+            Intent(this, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        )
     }
 
     private fun stopRinging() {
@@ -86,14 +114,12 @@ class AlarmService : Service() {
         ringing = false
         vibrator.cancel()
         wakeLock?.let { if (it.isHeld) it.release() }
-        getSystemService(NotificationManager::class.java).cancel(2)
-        onStateChange?.invoke(false)
+        wakeLock = null
+        stopForeground(STOP_FOREGROUND_REMOVE)
     }
 
     override fun onDestroy() {
-        server?.stop()
         stopRinging()
-        wifiLock?.let { if (it.isHeld) it.release() }
         super.onDestroy()
     }
 

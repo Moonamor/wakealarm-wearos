@@ -25,11 +25,20 @@
             </intent-filter>
         </activity>
 
+        <!-- Runs only while the alarm is ringing -->
         <service android:name=".AlarmService"
             android:exported="false"
             android:foregroundServiceType="specialUse">
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="network alarm listener" />
+                android:value="remote wake alarm" />
+        </service>
+
+        <!-- Receives push messages from Firebase Cloud Messaging -->
+        <service android:name=".WakeMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
         </service>
     </application>
 </manifest>
