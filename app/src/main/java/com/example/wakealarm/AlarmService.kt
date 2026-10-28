@@ -35,13 +35,14 @@ class AlarmService : Service() {
         /** Observable state for the Compose UI. */
         var ringing by mutableStateOf(false)
             private set
-        var message by mutableStateOf(DEFAULT_MESSAGE)
+        var alert by mutableStateOf(Alert())
             private set
+        val message: String get() = alert.message
 
-        fun ring(context: Context, msg: String?) {
+        fun ring(context: Context, alert: Alert) {
             val i = Intent(context, AlarmService::class.java)
                 .setAction(ACTION_RING)
-                .putExtra(EXTRA_MESSAGE, msg?.takeIf { it.isNotBlank() } ?: DEFAULT_MESSAGE)
+                .putExtras(alert.toBundle())
             context.startForegroundService(i)
         }
 
@@ -51,6 +52,7 @@ class AlarmService : Service() {
     }
 
     private var wakeLock: PowerManager.WakeLock? = null
+    private val siren by lazy { Siren(this) }
     private val vibrator by lazy {
         (getSystemService(VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
     }
@@ -70,7 +72,7 @@ class AlarmService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_RING -> startRinging(intent.getStringExtra(EXTRA_MESSAGE) ?: DEFAULT_MESSAGE)
+            ACTION_RING -> startRinging(Alert.fromBundle(intent.extras))
             ACTION_STOP -> { stopRinging(); stopSelf() }
             else -> stopSelf()
         }
@@ -105,12 +107,15 @@ class AlarmService : Service() {
             .build()
     }
 
-    private fun startRinging(msg: String) {
-        message = msg
+    private fun startRinging(a: Alert) {
+        alert = a
+        val msg = a.message
         startForeground(NOTIF_ID, buildNotification(msg))
         ListenerService.setStatus(this, "🔔 $msg")
 
-        if (ringing) return
+        if (ringing) {               // already ringing: just re-apply pattern / siren for the new level
+            applyPattern(a); return
+        }
         ringing = true
 
         wakeLock = (getSystemService(POWER_SERVICE) as PowerManager)
@@ -120,9 +125,7 @@ class AlarmService : Service() {
             )
             .apply { acquire(30 * 60 * 1000L) }
 
-        val timings = longArrayOf(0, 900, 150, 900, 150, 1800, 400)
-        val amps = intArrayOf(0, 255, 0, 255, 0, 255, 0)
-        vibrator.vibrate(VibrationEffect.createWaveform(timings, amps, 0))
+        applyPattern(a)
 
         // Best-effort direct launch; the full-screen intent above covers the locked/background case.
         runCatching {
@@ -133,9 +136,20 @@ class AlarmService : Service() {
         }
     }
 
+    private fun applyPattern(a: Alert) {
+        val (timings, amps) = when (a.level) {
+            Level.SOFT -> longArrayOf(0, 300, 700, 300, 1500) to intArrayOf(0, 140, 0, 140, 0)
+            Level.NORMAL -> longArrayOf(0, 900, 150, 900, 150, 1800, 400) to intArrayOf(0, 255, 0, 255, 0, 255, 0)
+            Level.URGENT -> longArrayOf(0, 250, 80, 250, 80, 250, 80, 1200, 200) to intArrayOf(0, 255, 0, 255, 0, 255, 0, 255, 0)
+        }
+        vibrator.vibrate(VibrationEffect.createWaveform(timings, amps, 0))
+        if (a.siren) runCatching { siren.start() } else siren.stop()
+    }
+
     private fun stopRinging() {
         if (!ringing) return
         ringing = false
+        siren.stop()
         vibrator.cancel()
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null

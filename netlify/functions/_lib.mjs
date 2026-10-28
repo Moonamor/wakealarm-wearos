@@ -37,7 +37,7 @@ async function accessToken() {
 }
 
 /** Send a high-priority data message to one device token. */
-export async function sendPush(deviceToken, msg) {
+export async function sendPush(deviceToken, data) {
   const { token, projectId } = await accessToken();
   const res = await fetch(`https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`, {
     method: "POST",
@@ -45,7 +45,7 @@ export async function sendPush(deviceToken, msg) {
     body: JSON.stringify({
       message: {
         token: deviceToken,
-        data: { msg, ts: String(Date.now()) },
+        data: { ...data, ts: String(Date.now()) },
         android: { priority: "HIGH", ttl: "120s" },
       },
     }),

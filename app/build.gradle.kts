@@ -23,8 +23,8 @@ android {
         applicationId = "com.example.wakealarm"
         minSdk = 30
         targetSdk = 35
-        versionCode = 4
-        versionName = "2.2"
+        versionCode = 5
+        versionName = "2.3"
 
         // Backend settings baked into the APK (set WAKE_BACKEND_URL / WAKE_KEY as CI secrets).
         buildConfigField("String", "BACKEND_URL", "\"${env("WAKE_BACKEND_URL", "https://notificationviaapi.netlify.app")}\"")
@@ -44,6 +44,7 @@ android {
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.wear:wear-ongoing:1.0.0")
+    implementation("androidx.wear:wear-remote-interactions:1.0.0")
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.compose.ui:ui:1.7.5")
     implementation("androidx.compose.foundation:foundation:1.7.5")

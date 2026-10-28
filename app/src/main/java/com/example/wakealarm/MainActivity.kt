@@ -17,7 +17,16 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import android.content.Intent
 import android.graphics.Bitmap
+import android.net.Uri
+import android.widget.Toast
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.rounded.Call
+import androidx.compose.material.icons.rounded.Share
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.wear.remote.interactions.RemoteActivityHelper
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -127,7 +136,7 @@ private fun WakeApp(onStop: () -> Unit) {
         transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(250)) },
         label = "screen"
     ) { isRinging ->
-        if (isRinging) RingingScreen(message = AlarmService.message, onStop = onStop)
+        if (isRinging) RingingScreen(alert = AlarmService.alert, onStop = onStop)
         else HomeScreen()
     }
 }
@@ -135,60 +144,98 @@ private fun WakeApp(onStop: () -> Unit) {
 /* ───────────────────────── Ringing ───────────────────────── */
 
 @Composable
-private fun RingingScreen(message: String, onStop: () -> Unit) {
+private fun RingingScreen(alert: Alert, onStop: () -> Unit) {
+    val ctx = LocalContext.current
+    val accent = when (alert.level) { Level.SOFT -> Teal; Level.NORMAL -> Red; Level.URGENT -> Amber }
+    val deep = when (alert.level) { Level.SOFT -> Color(0xFF00332F); Level.NORMAL -> RedDeep; Level.URGENT -> Color(0xFF7A3B00) }
+    val speed = if (alert.level == Level.URGENT) 300 else 550
+
     val pulse = rememberInfiniteTransition(label = "pulse")
     val scale by pulse.animateFloat(
         initialValue = 0.92f, targetValue = 1.08f,
-        animationSpec = infiniteRepeatable(tween(550, easing = LinearEasing), RepeatMode.Reverse),
+        animationSpec = infiniteRepeatable(tween(speed, easing = LinearEasing), RepeatMode.Reverse),
         label = "scale"
     )
     val glow by pulse.animateFloat(
         initialValue = 0.35f, targetValue = 0.9f,
-        animationSpec = infiniteRepeatable(tween(550, easing = LinearEasing), RepeatMode.Reverse),
+        animationSpec = infiniteRepeatable(tween(speed, easing = LinearEasing), RepeatMode.Reverse),
         label = "glow"
     )
 
     Box(
         Modifier.fillMaxSize().background(
-            Brush.radialGradient(listOf(RedDeep.copy(alpha = glow), Ink), radius = 420f)
+            Brush.radialGradient(listOf(deep.copy(alpha = glow), Ink), radius = 420f)
         ),
         contentAlignment = Alignment.Center
     ) {
         Column(
-            Modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 18.dp),
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 26.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
             Box(
-                Modifier.size(44.dp).scale(scale).background(Red.copy(alpha = 0.25f), CircleShape),
+                Modifier.size(40.dp).scale(scale).background(accent.copy(alpha = 0.25f), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Rounded.Notifications, contentDescription = null, tint = Red, modifier = Modifier.size(28.dp))
+                Icon(Icons.Rounded.Notifications, contentDescription = null, tint = accent, modifier = Modifier.size(26.dp))
             }
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(8.dp))
             Text(
-                text = message,
-                fontSize = 20.sp,
+                text = alert.message,
+                fontSize = if (alert.message.length > 40) 15.sp else 19.sp,
                 fontWeight = FontWeight.Bold,
-                lineHeight = 26.sp,
+                lineHeight = 24.sp,
                 textAlign = TextAlign.Center,
-                maxLines = 3,
+                maxLines = 4,
                 overflow = TextOverflow.Ellipsis,
                 color = Color.White
             )
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(12.dp))
             Chip(
                 onClick = onStop,
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-                colors = ChipDefaults.chipColors(backgroundColor = Red, contentColor = Color.White),
+                modifier = Modifier.fillMaxWidth().height(50.dp),
+                colors = ChipDefaults.chipColors(backgroundColor = accent, contentColor = if (alert.level == Level.URGENT) Ink else Color.White),
                 icon = { Icon(Icons.Rounded.Close, contentDescription = null, modifier = Modifier.size(24.dp)) },
                 label = {
-                    Text("إلغاء التنبيه", fontSize = 17.sp, fontWeight = FontWeight.SemiBold,
+                    Text("إلغاء التنبيه", fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             )
+            if (alert.phone != null || alert.link != null) {
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                    alert.phone?.let { phone ->
+                        ActionButton(Icons.Rounded.Call, "اتصال") {
+                            runCatching {
+                                ctx.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone"))
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                            }.onFailure { Toast.makeText(ctx, "لا يوجد تطبيق اتصال", Toast.LENGTH_SHORT).show() }
+                        }
+                    }
+                    if (alert.phone != null && alert.link != null) Spacer(Modifier.width(10.dp))
+                    alert.link?.let { link ->
+                        ActionButton(Icons.Rounded.Share, "فتح على الجوال") {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(link)).addCategory(Intent.CATEGORY_BROWSABLE)
+                            runCatching { RemoteActivityHelper(ctx).startRemoteActivity(intent) }
+                            Toast.makeText(ctx, "أُرسل الرابط إلى الجوال", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            }
         }
     }
+}
+
+@Composable
+private fun ActionButton(icon: ImageVector, label: String, onClick: () -> Unit) {
+    Chip(
+        onClick = onClick,
+        modifier = Modifier.height(44.dp),
+        colors = ChipDefaults.chipColors(backgroundColor = Color(0xFF161B22), contentColor = Color.White),
+        icon = { Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp)) },
+        label = { Text(label, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+    )
 }
 
 /* ───────────────────────── Home ───────────────────────── */
